@@ -14,18 +14,65 @@ func pop(l *[]string) string {
     return rv
 }
 
+func kv(m map[string][]any) (string, []any) {
+    for k, v := range m {
+        return k, v
+    }
+    return "", make([]any, 0)
+}
+
+// TODO: Err can be done last.
+type Err struct {
+    message string
+}
+
+func (e *Err) Error() string {
+    return e.message
+}
+
 type Migrator struct {
     Conn *sql.DB
-    QueryMap map[string]string
+    QueryMap map[string]map[string][]any
 }
 
 // @NewMigrator 
 // returns an instance of the Migrator struct with a provided connection reference.
-func NewMigrator(conn *sql.DB) Migrator {
-    return Migrator{
+func NewMigrator(conn *sql.DB) (Migrator, error) {
+    m := Migrator{
         Conn: conn,
-        QueryMap: make(map[string]string),
+        QueryMap: make(map[string]map[string][]any),
     }
+    m.AddQueriesToMap("util_queries")
+
+    // Attempt to create the base table if needed.
+    err := m.InitMigrationTable()
+    if err != nil {
+        return Migrator{}, err 
+    }
+
+    return m, nil
+}
+
+func (m *Migrator) AddArgsToQuery(queryName string, args []any) (error) {
+    val, ok := m.QueryMap[queryName]
+    if !ok {
+        return &Err{ message: "queryName was not valid."} 
+    }
+
+    k, _ := kv(val)
+    m.QueryMap[queryName][k] = args
+
+    return nil
+}
+
+// TODO: Eventually this should be able to ingest a custom table via the QueryMap
+func (m *Migrator) InitMigrationTable() (error) {
+    query, _ := kv(m.QueryMap["util_queries/initial_schema"]) 
+    _, err := m.Conn.Query(query)
+    if err != nil {
+        return err
+    }
+    return nil
 }
 
 /* 
@@ -42,11 +89,10 @@ q/
 ------queryThree.sql
 
 would output:
-[queryOne]=>queryOneContents, [nested/queryTwo]=>queryTwoContents, [nested/nestedAgain/queryThree]=>queryThreeContents
+queryOne=>[queryOneContents]: [...args], nested/queryTwo=>[queryTwoContents]: [...args], nested/nestedAgain/queryThree=>[queryThreeContents]: [...args]
 */
-
-// TODO: We should skip files that are not .sql
-// TODO: for some reason it seems buggy if we pass "./q" instead of "q" as the root for example... need to test more cases
+// TODO:  should skip files that are not .sql, also may need to clean the dirPath (ie; "./q" seemed to have issues comapred to just "q")
+// TODO: should also run a validator on file names! migrations are order based operands and each one needs a numbered tag ending-> anything_001.sql, canbe_002.sql, here_003.sql etc.
 func (m *Migrator) AddQueriesToMap(dirPath string) (error) {
     dirs := []string{ dirPath }
     for len(dirs) > 0 {
@@ -68,7 +114,9 @@ func (m *Migrator) AddQueriesToMap(dirPath string) (error) {
                 return err
             }
             cleanName := strings.Split(file.Name(), ".sql")
-            m.QueryMap[dir + "/" + cleanName[0]] = string(data)
+            d := make(map[string][]any)
+            d[string(data)] = make([]any, 0)
+            m.QueryMap[dir + "/" + cleanName[0]] = d
         }
     }
     return nil
