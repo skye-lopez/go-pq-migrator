@@ -63,7 +63,7 @@ func (m *Migrator) MigrateUp() (error) {
     defer tx.Rollback()
 
     var lastMigration int
-    qErr := m.Conn.QueryRow("SELECT COALLESCE(0, migration_number) as num FROM migrations;").Scan(&lastMigration)
+    qErr := m.Conn.QueryRow("SELECT COALESCE(0, migration_number) as num FROM migrations;").Scan(&lastMigration)
     // TODO: Remove this or turn on optional logging (and add more logging)
     fmt.Println("Last Migration:", lastMigration)
     if qErr != nil {
