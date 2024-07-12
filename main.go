@@ -32,10 +32,10 @@ type Migrator struct {
 }
 
 type MigratorQuery struct {
-    queryPath string
-    number int
-    query string
-    args []any
+    QueryPath string
+    Number int
+    Query string
+    Args []any
 }
 
 func NewMigrator(conn *sql.DB) (Migrator, error) {
@@ -71,7 +71,7 @@ func (m *Migrator) MigrateUp() (error) {
         if i+1 <= lastMigration {
             continue
         }
-        tx.Exec(mq.query, mq.args...)
+        tx.Exec(mq.Query, mq.Args...)
         tx.Exec("INSERT INTO migrations (migration_number) VALUES (?)", i+1)
     }
 
@@ -86,7 +86,7 @@ func (m *Migrator) MigrateUp() (error) {
 // if the pathName is highly nested this could become cumbersome...
 func (m *Migrator) AddArgsToQuery(queryName string, args []any) (error) {
     if val, ok := m.QueryMap[queryName]; ok {
-        val.args =args
+        val.Args = args
         m.QueryMap[queryName] = val
         return nil
     }
@@ -133,10 +133,10 @@ func (m *Migrator) AddQueriesToMap(dirPath string) (error) {
             }
 
             q := MigratorQuery{
-                queryPath: (dir + "/" + cleanName[0]),
-                number: num,
-                query: string(data),
-                args: make([]any, 0),
+                QueryPath: (dir + "/" + cleanName[0]),
+                Number: num,
+                Query: string(data),
+                Args: make([]any, 0),
             }
             m.QueryMap[dir + "/" + cleanName[0]] = q
         }
@@ -152,7 +152,7 @@ func (m *Migrator) MakeSortedQueryList() {
         res = append(res, v)
     }
     sort.Slice(res, func(i, j int) bool {
-        return res[i].number < res[j].number
+        return res[i].Number < res[j].Number
     })
 
     m.SortedQueryList = res
