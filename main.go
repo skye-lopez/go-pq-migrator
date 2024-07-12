@@ -17,44 +17,6 @@ func pop(l *[]string) string {
     return rv
 }
 
-func (m *Migrator) Query(queryName string) ([]any, error) {
-    var result []any
-    val, ok := m.QueryMap[queryName]
-    if !ok {
-        return result, &Err{ message: "Query does not exist" } 
-    }
-    query := val.query
-    args := val.args
-
-    rows, err := m.Conn.Query(query, args...)
-    if err != nil {
-        return result, err
-    }
-    defer rows.Close()
-
-    for rows.Next() {
-        types, tErr := rows.ColumnTypes()
-        if tErr != nil {
-            return result, tErr
-        }
-
-        values := make([]any, len(types))
-        refs := make([]any, len(types))
-        for i, t := range types {
-            values[i] = reflect.New(t.ScanType())
-            refs[i] = &values[i]
-        }
-        err = rows.Scan(refs...)
-        if err != nil {
-            return result, err
-        }
-
-        result = append(result, values)
-    }
-
-    return result, nil
-}
-
 // TODO: Err can be done last.
 type Err struct {
     message string
