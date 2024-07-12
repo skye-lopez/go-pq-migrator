@@ -72,11 +72,20 @@ func (m *Migrator) MigrateUp() (error) {
             continue
         }
         if len(mq.Args) >= 1 {
-            tx.Exec(mq.Query, mq.Args...)
+            _, err := tx.Exec(mq.Query, mq.Args...)
+            if err != nil {
+                return err
+            }
         } else {
-            tx.Exec(mq.Query)
+            _, err := tx.Exec(mq.Query)
+            if err != nil {
+                return err
+            }
         }
-        tx.Exec("INSERT INTO migrations (migration_number) VALUES ($1)", i+1)
+        _, err := tx.Exec("INSERT INTO migrations (migration_number) VALUES ($1)", i+1)
+        if err != nil {
+            return err
+        }
     }
 
     if err = tx.Commit(); err != nil {
