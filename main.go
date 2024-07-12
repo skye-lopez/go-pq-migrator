@@ -77,14 +77,11 @@ type MigratorQuery struct {
     args []any
 }
 
-// @NewMigrator 
-// returns an instance of the Migrator struct with a provided connection reference.
 func NewMigrator(conn *sql.DB) (Migrator, error) {
     m := Migrator{
         Conn: conn,
         QueryMap: make(map[string]MigratorQuery),
     }
-    m.AddQueriesToMap("util_queries")
 
     // Attempt to create the base table if needed.
     err := m.InitMigrationTable()
@@ -93,6 +90,35 @@ func NewMigrator(conn *sql.DB) (Migrator, error) {
     }
 
     return m, nil
+}
+
+func (m *Migrator) MigrateUp() (error) {
+    tx, err := m.Conn.Begin()
+    if err != nil {
+        return err
+    }
+    defer tx.Rollback()
+
+    var lastMigration int
+    qErr := m.Conn.QueryRow("SELECT COALLESCE(0, migration_number) as num FROM migrations;").Scan(&lastMigration)
+    if qErr != nil {
+        return err
+    }
+
+
+    for i, mq := range m.SortedQueryList {
+        if i+1 <= lastMigration {
+            continue
+        }
+        tx.Exec(mq.query, mq.args...)
+        tx.Exec("INSERT INTO migrations (migration_number) VALUES (?)", i+1)
+    }
+
+    if err = tx.Commit(); err != nil {
+        return err
+    }
+
+    return nil
 }
 
 func (m *Migrator) AddArgsToQuery(queryName string, args []any) (error) {
@@ -107,7 +133,7 @@ func (m *Migrator) AddArgsToQuery(queryName string, args []any) (error) {
 
 // TODO: Eventually this should be able to ingest a custom table via the QueryMap
 func (m *Migrator) InitMigrationTable() (error) {
-    query := m.QueryMap["util_queries/initial_schema"].query 
+    query := "CREATE TABLE IF NOT EXISTS migrations (migration_number INTEGER PRIMARY KEY, created_at TIMESTAMP DEFAULT NOW());"
     _, err := m.Conn.Query(query)
     if err != nil {
         return err
@@ -115,22 +141,6 @@ func (m *Migrator) InitMigrationTable() (error) {
     return nil
 }
 
-/* 
-@Migrator.AddQueriesToMap
-Given a dirPath edits the Migrator.QueryMap to contain a map of [queryName]=>[queryFileContents]
-It is a non-nested map where nested dirs are applied to the queryName. (also .sql file extensions are stripped from the naming convention)
-example:
-
-q/
---queryOne.sql
---/nested
-----queryTwo.sql
-----/nestedAgain
-------queryThree.sql
-
-would output:
-queryOne=>[queryOneContents]: [...args], nested/queryTwo=>[queryTwoContents]: [...args], nested/nestedAgain/queryThree=>[queryThreeContents]: [...args]
-*/
 // TODO:  should skip files that are not .sql, also may need to clean the dirPath (ie; "./q" seemed to have issues comapred to just "q")
 // TODO: should also run a validator on file names! migrations are order based operands and each one needs a numbered tag ending-> anything_001.sql, canbe_002.sql, here_003.sql etc.
 func (m *Migrator) AddQueriesToMap(dirPath string) (error) {
@@ -169,6 +179,7 @@ func (m *Migrator) AddQueriesToMap(dirPath string) (error) {
             m.QueryMap[dir + "/" + cleanName[0]] = q
         }
     }
+    m.MakeSortedQueryList()
     return nil
 }
 
