@@ -71,8 +71,12 @@ func (m *Migrator) MigrateUp() (error) {
         if i+1 <= lastMigration {
             continue
         }
-        tx.Exec(mq.Query, mq.Args...)
-        tx.Exec("INSERT INTO migrations (migration_number) VALUES (?)", i+1)
+        if len(mq.Args) >= 1 {
+            tx.Exec(mq.Query, mq.Args...)
+        } else {
+            tx.Exec(mq.Query)
+        }
+        tx.Exec("INSERT INTO migrations (migration_number) VALUES ($1)", i+1)
     }
 
     if err = tx.Commit(); err != nil {
@@ -84,6 +88,7 @@ func (m *Migrator) MigrateUp() (error) {
 
 // TODO: Ideally this would also be able to take a migration number as 
 // if the pathName is highly nested this could become cumbersome...
+// TODO: Also post that decision we need to make sure migrator.QueryMap and migrator.SortedQueryList are in sync.
 func (m *Migrator) AddArgsToQuery(queryName string, args []any) (error) {
     if val, ok := m.QueryMap[queryName]; ok {
         val.Args = args
