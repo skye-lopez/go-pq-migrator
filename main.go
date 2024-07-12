@@ -53,6 +53,7 @@ func NewMigrator(conn *sql.DB) (Migrator, error) {
     return m, nil
 }
 
+// NOTE: This doesn't capture any kind of rowResults from the query in question; maybe thats wanted at some point and would be a quick refactor.
 func (m *Migrator) MigrateUp() (error) {
     tx, err := m.Conn.Begin()
     if err != nil {
@@ -65,7 +66,6 @@ func (m *Migrator) MigrateUp() (error) {
     if qErr != nil {
         return err
     }
-
 
     for i, mq := range m.SortedQueryList {
         if i+1 <= lastMigration {
@@ -82,6 +82,8 @@ func (m *Migrator) MigrateUp() (error) {
     return nil
 }
 
+// TODO: Ideally this would also be able to take a migration number as 
+// if the pathName is highly nested this could become cumbersome...
 func (m *Migrator) AddArgsToQuery(queryName string, args []any) (error) {
     if val, ok := m.QueryMap[queryName]; ok {
         val.args =args
@@ -102,8 +104,7 @@ func (m *Migrator) InitMigrationTable() (error) {
     return nil
 }
 
-// TODO:  should skip files that are not .sql, also may need to clean the dirPath (ie; "./q" seemed to have issues comapred to just "q")
-// TODO: should also run a validator on file names! migrations are order based operands and each one needs a numbered tag ending-> anything_001.sql, canbe_002.sql, here_003.sql etc.
+// TODO: Validate filenames, current accepted format is: {anything}_{MigrationNumber}.sql ; example: initial_schema_001.sql 
 func (m *Migrator) AddQueriesToMap(dirPath string) (error) {
     dirs := []string{ dirPath }
     for len(dirs) > 0 {
