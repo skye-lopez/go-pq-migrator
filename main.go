@@ -4,6 +4,9 @@ import (
 	"database/sql"
 	"os"
 	"strings"
+    "strconv"
+    "reflect"
+    "sort"
 )
 
 // UTIL FUNCTIONS
@@ -14,11 +17,42 @@ func pop(l *[]string) string {
     return rv
 }
 
-func kv(m map[string][]any) (string, []any) {
-    for k, v := range m {
-        return k, v
+func (m *Migrator) Query(queryName string) ([]any, error) {
+    var result []any
+    val, ok := m.QueryMap[queryName]
+    if !ok {
+        return result, &Err{ message: "Query does not exist" } 
     }
-    return "", make([]any, 0)
+    query := val.query
+    args := val.args
+
+    rows, err := m.Conn.Query(query, args...)
+    if err != nil {
+        return result, err
+    }
+    defer rows.Close()
+
+    for rows.Next() {
+        types, tErr := rows.ColumnTypes()
+        if tErr != nil {
+            return result, tErr
+        }
+
+        values := make([]any, len(types))
+        refs := make([]any, len(types))
+        for i, t := range types {
+            values[i] = reflect.New(t.ScanType())
+            refs[i] = &values[i]
+        }
+        err = rows.Scan(refs...)
+        if err != nil {
+            return result, err
+        }
+
+        result = append(result, values)
+    }
+
+    return result, nil
 }
 
 // TODO: Err can be done last.
@@ -32,7 +66,15 @@ func (e *Err) Error() string {
 
 type Migrator struct {
     Conn *sql.DB
-    QueryMap map[string]map[string][]any
+    QueryMap map[string]MigratorQuery
+    SortedQueryList []MigratorQuery 
+}
+
+type MigratorQuery struct {
+    queryPath string
+    number int
+    query string
+    args []any
 }
 
 // @NewMigrator 
@@ -40,7 +82,7 @@ type Migrator struct {
 func NewMigrator(conn *sql.DB) (Migrator, error) {
     m := Migrator{
         Conn: conn,
-        QueryMap: make(map[string]map[string][]any),
+        QueryMap: make(map[string]MigratorQuery),
     }
     m.AddQueriesToMap("util_queries")
 
@@ -54,20 +96,18 @@ func NewMigrator(conn *sql.DB) (Migrator, error) {
 }
 
 func (m *Migrator) AddArgsToQuery(queryName string, args []any) (error) {
-    val, ok := m.QueryMap[queryName]
-    if !ok {
-        return &Err{ message: "queryName was not valid."} 
+    if val, ok := m.QueryMap[queryName]; ok {
+        val.args =args
+        m.QueryMap[queryName] = val
+        return nil
     }
 
-    k, _ := kv(val)
-    m.QueryMap[queryName][k] = args
-
-    return nil
+    return &Err{ message: "queryName was not valid."} 
 }
 
 // TODO: Eventually this should be able to ingest a custom table via the QueryMap
 func (m *Migrator) InitMigrationTable() (error) {
-    query, _ := kv(m.QueryMap["util_queries/initial_schema"]) 
+    query := m.QueryMap["util_queries/initial_schema"].query 
     _, err := m.Conn.Query(query)
     if err != nil {
         return err
@@ -114,10 +154,33 @@ func (m *Migrator) AddQueriesToMap(dirPath string) (error) {
                 return err
             }
             cleanName := strings.Split(file.Name(), ".sql")
-            d := make(map[string][]any)
-            d[string(data)] = make([]any, 0)
-            m.QueryMap[dir + "/" + cleanName[0]] = d
+            splitName := strings.Split(cleanName[0], "_")
+            num, err := strconv.Atoi(splitName[len(splitName)-1])
+            if err != nil {
+                return err
+            }
+
+            q := MigratorQuery{
+                queryPath: (dir + "/" + cleanName[0]),
+                number: num,
+                query: string(data),
+                args: make([]any, 0),
+            }
+            m.QueryMap[dir + "/" + cleanName[0]] = q
         }
     }
     return nil
+}
+
+// TODO: This could probably be done in a smarter way - brute force for now.
+func (m *Migrator) MakeSortedQueryList() {
+    res := []MigratorQuery{}
+    for _, v := range m.QueryMap {
+        res = append(res, v)
+    }
+    sort.Slice(res, func(i, j int) bool {
+        return res[i].number < res[j].number
+    })
+
+    m.SortedQueryList = res
 }
