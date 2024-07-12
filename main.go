@@ -65,10 +65,11 @@ func (m *Migrator) MigrateUp() (error) {
     var lastMigration int
     qErr := m.Conn.QueryRow("SELECT COALESCE(0, migration_number) as num FROM migrations;").Scan(&lastMigration)
     // TODO: Remove this or turn on optional logging (and add more logging)
-    fmt.Println("Last Migration:", lastMigration)
     if qErr != nil {
+        fmt.Println("ERROR OCCURED ON lastMigration")
         return qErr
     }
+    fmt.Println("Last Migration:", lastMigration)
 
     for i, mq := range m.SortedQueryList {
         if i+1 <= lastMigration {
@@ -78,16 +79,19 @@ func (m *Migrator) MigrateUp() (error) {
         if len(mq.Args) >= 1 {
             _, err := tx.Exec(mq.Query, mq.Args...)
             if err != nil {
+                fmt.Println("ERROR OCCURED ON args query")
                 return err
             }
         } else {
             _, err := tx.Exec(mq.Query)
             if err != nil {
+                fmt.Println("ERROR OCCURED ON non args query")
                 return err
             }
         }
         _, err := tx.Exec("INSERT INTO migrations (migration_number) VALUES ($1)", i+1)
         if err != nil {
+            fmt.Println("ERROR OCCURED ON insert statement query")
             return err
         }
         fmt.Println("Migration Done - #", i+1)
