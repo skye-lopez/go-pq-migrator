@@ -67,7 +67,7 @@ func (m *Migrator) MigrateUp() (error) {
     // TODO: Remove this or turn on optional logging (and add more logging)
     fmt.Println("Last Migration:", lastMigration)
     if qErr != nil {
-        return err
+        return qErr
     }
 
     for i, mq := range m.SortedQueryList {
