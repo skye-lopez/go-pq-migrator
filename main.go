@@ -74,6 +74,7 @@ func (m *Migrator) MigrateUp() (error) {
         if i+1 <= lastMigration {
             continue
         }
+        fmt.Println("Executing Migration#", i+1);
         if len(mq.Args) >= 1 {
             _, err := tx.Exec(mq.Query, mq.Args...)
             if err != nil {
@@ -89,12 +90,14 @@ func (m *Migrator) MigrateUp() (error) {
         if err != nil {
             return err
         }
+        fmt.Println("Migration Done - #", i+1)
     }
 
     if err = tx.Commit(); err != nil {
         return err
     }
 
+    fmt.Println("All migrations done and commited")
     return nil
 }
 
