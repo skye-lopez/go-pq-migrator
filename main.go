@@ -7,6 +7,7 @@ import (
     "strconv"
     "sort"
     "fmt"
+    "bufio"
 )
 
 // UTIL FUNCTIONS
@@ -15,6 +16,19 @@ func pop(l *[]string) string {
     rv := (*l)[f-1]
     *l = (*l)[:f-1]
     return rv
+}
+
+func confirmUserAction(message string) bool {
+    reader := bufio.NewReader(os.Stdin)
+    fmt.Println(message)
+    text, _ := reader.ReadString('\n')
+    text = strings.TrimSuffix(text, "\n")
+    if text == "y" {
+        fmt.Println("Lets do it! :)")
+        return true
+    } 
+    fmt.Println("You said no, good choice.")
+    return false
 }
 
 // TODO: Err can be done last.
@@ -56,6 +70,11 @@ func NewMigrator(conn *sql.DB) (Migrator, error) {
 
 // NOTE: This doesn't capture any kind of rowResults from the query in question; maybe thats wanted at some point and would be a quick refactor.
 func (m *Migrator) MigrateUp() (error) {
+    moveForward := confirmUserAction("Do you want to migrate up? [y/n](case sensitive) \n")
+    if !moveForward {
+        return nil
+    }
+
     tx, err := m.Conn.Begin()
     if err != nil {
         return err
@@ -63,13 +82,16 @@ func (m *Migrator) MigrateUp() (error) {
     defer tx.Rollback()
 
     var lastMigration int
-    qErr := m.Conn.QueryRow("SELECT COALESCE(0, migration_number) as num FROM migrations;").Scan(&lastMigration)
-    // TODO: Remove this or turn on optional logging (and add more logging)
+    rows, qErr := m.Conn.Query("SELECT COALESCE(0, migration_number) as lastMigration FROM migrations;")
     if qErr != nil {
-        fmt.Println("ERROR OCCURED ON lastMigration")
         return qErr
     }
-    fmt.Println("Last Migration:", lastMigration)
+    for rows.Next() {
+        scanErr := rows.Scan(&lastMigration)
+        if scanErr != nil {
+            return scanErr
+        }
+    }
 
     for i, mq := range m.SortedQueryList {
         if i+1 <= lastMigration {
@@ -79,19 +101,16 @@ func (m *Migrator) MigrateUp() (error) {
         if len(mq.Args) >= 1 {
             _, err := tx.Exec(mq.Query, mq.Args...)
             if err != nil {
-                fmt.Println("ERROR OCCURED ON args query")
                 return err
             }
         } else {
             _, err := tx.Exec(mq.Query)
             if err != nil {
-                fmt.Println("ERROR OCCURED ON non args query")
                 return err
             }
         }
         _, err := tx.Exec("INSERT INTO migrations (migration_number) VALUES ($1)", i+1)
         if err != nil {
-            fmt.Println("ERROR OCCURED ON insert statement query")
             return err
         }
         fmt.Println("Migration Done - #", i+1)
