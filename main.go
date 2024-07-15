@@ -68,57 +68,6 @@ func NewMigrator(conn *sql.DB) (Migrator, error) {
     return m, nil
 }
 
-// This takes a schemaName (default is public) and destroys and rebuilds it. This is really only intended for testing migrations and should be used with extreme caution.
-func (m *Migrator) MigrateDown(schemaName string) (error) {
-    if schemaName == "" {
-        schemaName = "public"
-    }
-    moveForward := confirmUserAction("Do you really want to migrate down? This will destroy all data and tables in your provided database connection. [y/n] \n")
-    if !moveForward {
-        return nil
-    }
-    areYouSure := confirmUserAction("You are really sure you want to migrate down? This will nuke your DB and is only for quickly tearing down a testing DB. [y/n] \n")
-    if !areYouSure {
-        return nil
-    }
-
-    tx, err := m.Conn.Begin()
-    if err != nil {
-        return err
-    }
-    defer tx.Rollback()
-
-    // Delete schema
-    _, err = tx.Exec("DROP SCHEMA $1 CASCADE;", schemaName)
-    if err != nil {
-        return err
-    }
-
-    // Recreate schema as a blank
-    _, err = tx.Exec("CREATE SCHEMA $1 ;", schemaName)
-    if err != nil {
-        return err
-    }
-
-    // Return permissions
-    _, err = tx.Exec("GRANT ALL ON SCHEMA $1 TO postgres;", schemaName)
-    if err != nil {
-        return err
-    }
-
-    _, err = tx.Exec("GRANT ALL ON SCHEMA $1 to $1;", schemaName)
-    if err != nil {
-        return err
-    }
-
-    // Commit
-    if err = tx.Commit(); err != nil {
-        return err
-    }
-
-    fmt.Println("Scheme reset: ", schemaName)
-    return nil
-}
 
 // NOTE: This doesn't capture any kind of rowResults from the query in question; maybe thats wanted at some point and would be a quick refactor.
 func (m *Migrator) MigrateUp() (error) {
@@ -238,6 +187,46 @@ func (m *Migrator) AddQueriesToMap(dirPath string) (error) {
     }
     m.MakeSortedQueryList()
     return nil
+}
+
+// Removes all tables form a schema. Only used for quick testing/automation.
+func (m *Migrator) MigrateDown(schemaName string) (error) {
+    if schemaName == "" {
+        schemaName = "public"
+    }
+    moveForward := confirmUserAction("Do you really want to migrate down? This will destroy all data and tables in your provided database connection. [y/n] \n")
+    if !moveForward {
+        return nil
+    }
+    areYouSure := confirmUserAction("You are really sure you want to migrate down? This will nuke your DB and is only for quickly tearing down a testing DB. [y/n] \n")
+    if !areYouSure {
+        return nil
+    }
+    migrateDownFunc := `
+    CREATE OR REPLACE FUNCTION migrate_down(schema_name text)
+    RETURNS VOID AS $$
+    DECLARE r record;
+    BEGIN
+        FOR r IN SELECT * FROM pg_tables WHERE schemaname = schema_name LOOP
+            EXECUTE 'DROP TABLE ' || r.tablename || ' CASCADE;';
+        END LOOP;
+   END; $$ language plpgsql;` 
+   _, err := m.Conn.Exec(migrateDownFunc)
+   if err != nil {
+       return err
+   }
+
+   _, err = m.Conn.Exec("SELECT migrate_down($1)", schemaName)
+   if err != nil {
+       return err
+   }
+
+   _, err = m.Conn.Exec("DROP FUNTION migrate_down;")
+   if err != nil {
+       return err
+   }
+
+   return nil
 }
 
 // TODO: This could probably be done in a smarter way - brute force for now.
