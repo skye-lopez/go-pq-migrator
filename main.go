@@ -1,4 +1,5 @@
 package migrator
+// TODO: MakeSortedQueryList should just be run before migrateup is called.
 
 import (
 	"database/sql"
@@ -221,7 +222,7 @@ func (m *Migrator) MigrateDown(schemaName string) (error) {
        return err
    }
 
-   _, err = m.Conn.Exec("DROP FUNTION migrate_down;")
+   _, err = m.Conn.Exec("DROP FUNCTION migrate_down;")
    if err != nil {
        return err
    }
