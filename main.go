@@ -82,7 +82,7 @@ func (m *Migrator) MigrateUp() (error) {
     defer tx.Rollback()
 
     var lastMigration int
-    rows, qErr := m.Conn.Query("SELECT COALESCE(0, migration_number) as lastMigration FROM migrations;")
+    rows, qErr := m.Conn.Query("SELECT COALESCE(max(migration_number), 0) as lastMigration FROM migrations;")
     if qErr != nil {
         return qErr
     }
