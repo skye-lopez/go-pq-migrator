@@ -1,5 +1,4 @@
 package migrator
-// TODO: MakeSortedQueryList should just be run before migrateup is called.
 
 import (
 	"database/sql"
@@ -72,6 +71,7 @@ func NewMigrator(conn *sql.DB) (Migrator, error) {
 
 // NOTE: This doesn't capture any kind of rowResults from the query in question; maybe thats wanted at some point and would be a quick refactor.
 func (m *Migrator) MigrateUp() (error) {
+    m.MakeSortedQueryList()
     moveForward := confirmUserAction("Do you want to migrate up? [y/n] \n")
     if !moveForward {
         return nil
@@ -126,9 +126,6 @@ func (m *Migrator) MigrateUp() (error) {
     return nil
 }
 
-// TODO: Ideally this would also be able to take a migration number as 
-// if the pathName is highly nested this could become cumbersome...
-// TODO: Also post that decision we need to make sure migrator.QueryMap and migrator.SortedQueryList are in sync.
 func (m *Migrator) AddArgsToQuery(queryName string, args []any) (error) {
     if val, ok := m.QueryMap[queryName]; ok {
         val.Args = args
@@ -136,10 +133,10 @@ func (m *Migrator) AddArgsToQuery(queryName string, args []any) (error) {
         return nil
     }
 
+    m.MakeSortedQueryList()
     return &Err{ message: "queryName was not valid."} 
 }
 
-// TODO: Eventually this should be able to ingest a custom table via the QueryMap
 func (m *Migrator) InitMigrationTable() (error) {
     query := "CREATE TABLE IF NOT EXISTS migrations (migration_number INTEGER PRIMARY KEY, created_at TIMESTAMP DEFAULT NOW());"
     _, err := m.Conn.Query(query)
@@ -149,7 +146,6 @@ func (m *Migrator) InitMigrationTable() (error) {
     return nil
 }
 
-// TODO: Validate filenames, current accepted format is: {anything}_{MigrationNumber}.sql ; example: initial_schema_001.sql 
 func (m *Migrator) AddQueriesToMap(dirPath string) (error) {
     dirs := []string{ dirPath }
     for len(dirs) > 0 {
@@ -170,11 +166,17 @@ func (m *Migrator) AddQueriesToMap(dirPath string) (error) {
             if err != nil {
                 return err
             }
+
+            fileExtension := strings.Split(file.Name(), ".")
+            if fileExtension[len(fileExtension)-1] != "sql" {
+                continue
+            }
+
             cleanName := strings.Split(file.Name(), ".sql")
             splitName := strings.Split(cleanName[0], "_")
             num, err := strconv.Atoi(splitName[len(splitName)-1])
             if err != nil {
-                return err
+                continue
             }
 
             q := MigratorQuery{
@@ -186,7 +188,6 @@ func (m *Migrator) AddQueriesToMap(dirPath string) (error) {
             m.QueryMap[dir + "/" + cleanName[0]] = q
         }
     }
-    m.MakeSortedQueryList()
     return nil
 }
 
@@ -230,7 +231,6 @@ func (m *Migrator) MigrateDown(schemaName string) (error) {
    return nil
 }
 
-// TODO: This could probably be done in a smarter way - brute force for now.
 func (m *Migrator) MakeSortedQueryList() {
     res := []MigratorQuery{}
     for _, v := range m.QueryMap {
