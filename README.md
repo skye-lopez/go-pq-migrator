@@ -7,7 +7,13 @@ Feel free to make any feature requests, or submit a PR.
 
 (does not support the raw database/sql but would be an easy fork)
 
+## Current State
+v1.0.0 : This is a very rough beta: USE WITH CAUTION
+
+The roadmap still has some critical things to push.
+
 ### Roadmap
+- Better tests
 - Better errors 
 - Optional CLI confirmation
 
